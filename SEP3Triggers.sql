@@ -17,12 +17,6 @@ BEGIN
         END IF;
     END IF;
     
-    IF UPDATING THEN
-        IF nHoteles = 0 THEN
-            raise_application_error(-20002, 'ERROR: No existe un Hotel con ese codigo');
-        END IF;
-    END IF;
-    
     -- 7. El director de un hotel es un empleado de la multinacional
     IF (:NEW.cod_empleado IS NOT NULL) THEN  
         SELECT COUNT(*) INTO directorEsEmpleado FROM EmpleadoView 
@@ -133,12 +127,6 @@ BEGIN
             raise_application_error(-20010, 'ERROR: Ya existe un Cliente con ese codigo');
         END IF;
     END IF;
-    
-    IF UPDATING THEN
-        IF nClientes = 0 THEN
-            raise_application_error(-20011, 'ERROR: No existe un Cliente con ese codigo');
-        END IF;
-    END IF;
 END;
 /
 
@@ -158,12 +146,6 @@ BEGIN
     IF INSERTING THEN
         IF nArticulos > 0 THEN
             raise_application_error(-20012, 'ERROR: Ya existe un Articulo con ese codigo');
-        END IF;
-    END IF;
-    
-    IF UPDATING THEN
-        IF nArticulos = 0 THEN
-            raise_application_error(-20013, 'ERROR: No existe un Articulo con ese codigo');
         END IF;
     END IF;
     
@@ -205,12 +187,6 @@ BEGIN
     IF INSERTING THEN
         IF nProveedor > 0 THEN
             raise_application_error(-20016, 'ERROR: Ya existe un Proveedor con ese codigo');
-        END IF;
-    END IF;
-    
-    IF UPDATING THEN
-        IF nProveedor = 0 THEN
-            raise_application_error(-20017, 'ERROR: No existe un Proveedor con ese codigo');
         END IF;
     END IF;
     
@@ -258,12 +234,6 @@ BEGIN
     IF INSERTING THEN
         IF nVende > 0 THEN
             raise_application_error(-20020, 'ERROR: Ya existe una Venta con ese Proveedor y Articulo');
-        END IF;
-    END IF;
-    
-    IF UPDATING THEN
-        IF nVende = 0 THEN
-            raise_application_error(-20021, 'ERROR: No existe una Venta con ese Proveedor y Articulo');
         END IF;
     END IF;
     
@@ -354,12 +324,6 @@ BEGIN
     IF INSERTING THEN
         IF nSuministro > 0 THEN
             raise_application_error(-20024, 'ERROR: Ya existe una Suministro entre esos Proveedor, Articulo y Hotel en esa fecha');
-        END IF;
-    END IF;
-    
-    IF UPDATING THEN
-        IF nSuministro = 0 THEN
-            raise_application_error(-20025, 'ERROR: No existe una Suministro entre esos Proveedor, Articulo y Hotel en esa fecha');
         END IF;
     END IF;
     
@@ -480,7 +444,8 @@ DECLARE
     doblesHotel NUMBER;
     sencillasReservadas NUMBER;
     doblesReservadas NUMBER;
-    reservasCliente NUMBER;
+    reservasClienteMismoHotel NUMBER;
+    reservasClienteOtroHotel NUMBER;
 BEGIN
     -- 1. Restricciones de Llave Única
     SELECT COUNT(*) INTO nReserva FROM ReservaView 
@@ -492,17 +457,11 @@ BEGIN
         END IF;
     END IF;
     
-    IF UPDATING THEN
-        IF nReserva = 0 THEN
-            raise_application_error(-20032, 'ERROR: No existe un Reserva de ese Cliente en esa Fecha');
-        END IF;
-    END IF;
-    
     -- 2. Restricciones de Integridad Referencial
     SELECT COUNT(*) INTO existeCliente FROM ClienteView WHERE cod_cliente=:NEW.cod_cliente;
     
     IF existeCliente = 0 THEN
-        raise_application_error(-20033, 'ERROR: El Cliente que se quiere hacer la Reserva no existe');
+        raise_application_error(-20033, 'ERROR: El Cliente que quiere hacer la Reserva no existe');
     END IF;
     
     SELECT COUNT(*) INTO existeHotel FROM HotelView WHERE cod_hotel=:NEW.cod_hotel;
@@ -514,10 +473,18 @@ BEGIN
     -- 4. El número de reservas de un hotel no podrá exceder su capacidad (sencillas, dobles y totales)
     IF (UPDATING('habitacion') OR UPDATING('fecha_inicio') OR UPDATING('fecha_fin') OR INSERTING) THEN
         SELECT COUNT(*) INTO sencillasReservadas FROM ReservaView
-        WHERE (fecha_inicio <= :NEW.fecha_inicio AND fecha_fin >= :NEW.fecha_fin AND cod_hotel=:NEW.cod_hotel AND habitacion='Sencilla');
+        WHERE ((fecha_inicio <= :NEW.fecha_inicio AND :NEW.fecha_fin <= fecha_fin) OR 
+        (:NEW.fecha_inicio <= fecha_inicio AND fecha_fin <= :NEW.fecha_fin) OR
+        (:NEW.fecha_inicio <= fecha_inicio AND fecha_inicio <= :NEW.fecha_fin) OR
+        (:NEW.fecha_inicio <= fecha_fin AND fecha_fin <= :NEW.fecha_fin)) AND
+        cod_hotel=:NEW.cod_hotel AND habitacion='Sencilla';
         
         SELECT COUNT(*) INTO doblesReservadas FROM ReservaView
-        WHERE (fecha_inicio <= :NEW.fecha_inicio AND fecha_fin >= :NEW.fecha_fin AND cod_hotel=:NEW.cod_hotel AND habitacion='Doble');
+        WHERE ((fecha_inicio <= :NEW.fecha_inicio AND :NEW.fecha_fin <= fecha_fin) OR 
+        (:NEW.fecha_inicio <= fecha_inicio AND fecha_fin <= :NEW.fecha_fin) OR
+        (:NEW.fecha_inicio <= fecha_inicio AND fecha_inicio <= :NEW.fecha_fin) OR
+        (:NEW.fecha_inicio <= fecha_fin AND fecha_fin <= :NEW.fecha_fin)) AND 
+        cod_hotel=:NEW.cod_hotel AND habitacion='Doble';
      
         SELECT n_hab_sencillas INTO sencillasHotel FROM HotelView WHERE cod_hotel=:NEW.cod_hotel;
         
@@ -541,12 +508,28 @@ BEGIN
     
     -- 6. Un cliente nunca podrá tener más de una reserva en hoteles distintos para las mismas fechas
     IF (UPDATING('fecha_inicio') OR UPDATING('fecha_fin') OR INSERTING) THEN
-        SELECT COUNT(*) INTO reservasCliente FROM ReservaView 
-        WHERE (fecha_inicio <= :NEW.fecha_inicio AND fecha_fin >= :NEW.fecha_fin AND cod_hotel != :NEW.cod_hotel);
-        
-        IF reservasCliente > 0 THEN
+        SELECT COUNT(*) INTO reservasClienteOtroHotel FROM ReservaView 
+        WHERE ((fecha_inicio <= :NEW.fecha_inicio AND :NEW.fecha_fin <= fecha_fin) OR 
+        (:NEW.fecha_inicio <= fecha_inicio AND fecha_fin <= :NEW.fecha_fin) OR
+        (:NEW.fecha_inicio <= fecha_inicio AND fecha_inicio <= :NEW.fecha_fin) OR
+        (:NEW.fecha_inicio <= fecha_fin AND fecha_fin <= :NEW.fecha_fin)) AND
+        cod_hotel != :NEW.cod_hotel AND cod_cliente = :NEW.cod_cliente;
+                
+        IF reservasClienteOtroHotel > 0 THEN
             raise_application_error(-20038, 'ERROR: El Cliente ya tiene una reserva en otro Hotel para esas Fechas');
         END IF;
+        
+        SELECT COUNT(*) INTO reservasClienteMismoHotel FROM ReservaView 
+        WHERE ((fecha_inicio <= :NEW.fecha_inicio AND :NEW.fecha_fin <= fecha_fin) OR 
+        (:NEW.fecha_inicio <= fecha_inicio AND fecha_fin <= :NEW.fecha_fin) OR
+        (:NEW.fecha_inicio <= fecha_inicio AND fecha_inicio <= :NEW.fecha_fin) OR
+        (:NEW.fecha_inicio <= fecha_fin AND fecha_fin <= :NEW.fecha_fin)) AND
+        cod_hotel = :NEW.cod_hotel AND cod_cliente = :NEW.cod_cliente;
+                
+        IF reservasClienteMismoHotel > 0 THEN
+            raise_application_error(-20238, 'ERROR: El Cliente ya tiene una reserva en este Hotel para esas Fechas');
+        END IF;
+        
     END IF;
 END;
 /
@@ -575,12 +558,6 @@ BEGIN
     IF INSERTING THEN
         IF nEmpleados > 0 THEN
             raise_application_error(-20039, 'ERROR: Ya existe un Empleado con ese codigo');
-        END IF;
-    END IF;
-    
-    IF UPDATING THEN
-        IF nEmpleados = 0 THEN
-            raise_application_error(-20040, 'ERROR: No existe un Empleado con ese codigo');
         END IF;
     END IF;
     
