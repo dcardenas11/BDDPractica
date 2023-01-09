@@ -5,7 +5,7 @@ CREATE OR REPLACE PROCEDURE AltaNuevoEmpleado
 IS
     nEmpleados NUMBER;
     nHoteles NUMBER;
-    provinciaHotel calabaza4.HOTEL4.PROVINCIA%TYPE;
+    provinciaHotel calabaza1.HOTEL1.PROVINCIA%TYPE;
 BEGIN
     SELECT COUNT(*) INTO nHoteles FROM HotelView WHERE cod_hotel = NEW_cod_hotel;
     
@@ -41,7 +41,7 @@ IS
     hotelActual NUMBER;
     fechaInicio DATE;
     esDirector NUMBER;
-    provinciaHotel calabaza4.HOTEL4.provincia%TYPE;
+    provinciaHotel calabaza1.HOTEL1.provincia%TYPE;
 BEGIN
     SELECT COUNT(*) INTO nEmpleados FROM EmpleadoView WHERE cod_empleado = NEW_cod_empleado;
     IF (nEmpleados = 0) THEN
@@ -105,7 +105,7 @@ IS
     nEmpleados NUMBER;
     salarioAnterior NUMBER;
     hotelEmpleado NUMBER;
-    provinciaHotel calabaza4.HOTEL4.provincia%TYPE;
+    provinciaHotel calabaza1.HOTEL1.provincia%TYPE;
 BEGIN
     SELECT COUNT (*) INTO nEmpleados FROM EmpleadoView
     WHERE cod_empleado = NEW_cod_empleado;
@@ -150,9 +150,9 @@ IS
     existeHotel NUMBER;
     antiguoHotel NUMBER;
     fechaInicioEmpleado DATE;
-    provinciaHotel calabaza4.HOTEL4.provincia%TYPE;
-    provinciaNuevoHotel calabaza4.HOTEL4.provincia%TYPE;
-    nombreEmpleado calabaza4.EMPLEADO4.nombre%TYPE;
+    provinciaHotel calabaza1.HOTEL1.provincia%TYPE;
+    provinciaNuevoHotel calabaza1.HOTEL1.provincia%TYPE;
+    nombreEmpleado calabaza1.EMPLEADO1.nombre%TYPE;
     dniEmpleado NUMBER;
     fechaContratoEmpleado DATE;
     salarioEmpleado NUMBER;
@@ -276,7 +276,7 @@ END AltaNuevoHotel;
 CREATE OR REPLACE PROCEDURE CambiarDirector(NEW_cod_hotel NUMBER, NEW_cod_empleado NUMBER)
 IS
     nHotel NUMBER;
-    provinciaHotel calabaza4.HOTEL4.provincia%TYPE;
+    provinciaHotel calabaza1.HOTEL1.provincia%TYPE;
 BEGIN
     SELECT COUNT (*) INTO nHotel FROM HotelView 
     WHERE cod_hotel = NEW_cod_hotel;
@@ -324,23 +324,23 @@ END AltaNuevoCliente;
 
 -- 8. Dar de alta o actualizar una reserva
 CREATE OR REPLACE PROCEDURE AltaActualizarReserva
-    (NEW_cod_cliente NUMBER, NEW_cod_hotel NUMBER, NEW_habitacion RESERVA4.habitacion%TYPE, 
-    NEW_fecha_inicio DATE, NEW_fecha_fin DATE, NEW_precio RESERVA4.precio%TYPE)
+    (NEW_cod_cliente NUMBER, NEW_cod_hotel NUMBER, NEW_habitacion calabaza1.RESERVA1.habitacion%TYPE, 
+    NEW_fecha_inicio DATE, NEW_fecha_fin DATE, NEW_precio calabaza1.RESERVA1.precio%TYPE)
 IS
     existeCliente NUMBER;
     existeHotel NUMBER;
     existeReserva NUMBER;
-    fechaInicioAntiguaReserva RESERVA4.fecha_inicio%TYPE;
-    fechaFinAntiguaReserva RESERVA4.fecha_fin%TYPE;
+    fechaInicioAntiguaReserva calabaza1.RESERVA1.fecha_inicio%TYPE;
+    fechaFinAntiguaReserva calabaza1.RESERVA1.fecha_fin%TYPE;
     hotelAntiguaReserva NUMBER;
-    provinciaHotelAntiguaReserva HOTEL4.provincia%TYPE;
-    provinciaHotelNuevaReserva HOTEL4.provincia%TYPE;
+    provinciaHotelAntiguaReserva calabaza1.HOTEL1.provincia%TYPE;
+    provinciaHotelNuevaReserva calabaza1.HOTEL1.provincia%TYPE;
     totalSencillas NUMBER;
     ocupadasSencillas NUMBER;
     totalDobles NUMBER;
     ocupadasDobles NUMBER;
-    precioAntiguaReserva RESERVA4.precio%TYPE;
-    habitacionAntiguaReserva RESERVA4.habitacion%TYPE;
+    precioAntiguaReserva calabaza1.RESERVA1.precio%TYPE;
+    habitacionAntiguaReserva calabaza1.RESERVA1.habitacion%TYPE;
 BEGIN
     SELECT COUNT(*) INTO existeHotel FROM HotelView WHERE cod_hotel = NEW_cod_hotel;
     SELECT COUNT(*) INTO existeCliente FROM ClienteView  WHERE cod_cliente = NEW_cod_cliente;
@@ -385,6 +385,7 @@ BEGIN
             IF (hotelAntiguaReserva != NEW_cod_hotel) THEN
                 raise_application_error(-20115, 'ERROR: Este Cliente ya tiene una reserva en otro Hotel para estas Fechas');
             ELSIF (fechaInicioAntiguaReserva <= NEW_fecha_inicio AND NEW_fecha_fin <= fechaFinAntiguaReserva) THEN
+                
                 SELECT provincia INTO provinciaHotelNuevaReserva FROM HotelView
                 WHERE cod_hotel = NEW_cod_hotel;
                 
@@ -397,17 +398,21 @@ BEGIN
                 
                 CASE
                     WHEN provinciaHotelNuevaReserva = 'Granada' OR provinciaHotelNuevaReserva = 'Jaén' THEN
-                        UPDATE calabaza1.RESERVA1 SET precio = NEW_precio, habitacion = NEW_habitacion, fecha_inicio = NEW_fecha_inicio, fecha_fin = NEW_fecha_fin
-                        WHERE cod_cliente = NEW_cod_cliente AND fecha_inicio = fechaInicioAntiguaReserva;
+                        DELETE FROM calabaza1.RESERVA1 WHERE cod_cliente = NEW_cod_cliente AND fecha_inicio = fechaInicioAntiguaReserva;
+                        COMMIT;
+                        INSERT INTO calabaza1.RESERVA1 VALUES (NEW_cod_hotel, NEW_cod_cliente, NEW_fecha_inicio, NEW_fecha_fin, NEW_habitacion, NEW_precio);
                     WHEN provinciaHotelNuevaReserva = 'Cádiz' OR provinciaHotelNuevaReserva = 'Huelva' THEN 
-                        UPDATE calabaza2.RESERVA2 SET precio = NEW_precio, habitacion = NEW_habitacion, fecha_inicio = NEW_fecha_inicio, fecha_fin = NEW_fecha_fin
-                        WHERE cod_cliente = NEW_cod_cliente AND fecha_inicio = fechaInicioAntiguaReserva;
+                        DELETE FROM calabaza2.RESERVA2 WHERE cod_cliente = NEW_cod_cliente AND fecha_inicio = fechaInicioAntiguaReserva;
+                        COMMIT;
+                        INSERT INTO calabaza2.RESERVA2 VALUES (NEW_cod_hotel, NEW_cod_cliente, NEW_fecha_inicio, NEW_fecha_fin, NEW_habitacion, NEW_precio);
                     WHEN provinciaHotelNuevaReserva = 'Sevilla' OR provinciaHotelNuevaReserva = 'Córdoba' THEN
-                        UPDATE calabaza3.RESERVA3 SET precio = NEW_precio, habitacion = NEW_habitacion, fecha_inicio = NEW_fecha_inicio, fecha_fin = NEW_fecha_fin
-                        WHERE cod_cliente = NEW_cod_cliente AND fecha_inicio = fechaInicioAntiguaReserva;
+                        DELETE FROM calabaza2.RESERVA2 WHERE cod_cliente = NEW_cod_cliente AND fecha_inicio = fechaInicioAntiguaReserva;
+                        COMMIT;
+                        INSERT INTO calabaza3.RESERVA3 VALUES (NEW_cod_hotel, NEW_cod_cliente, NEW_fecha_inicio, NEW_fecha_fin, NEW_habitacion, NEW_precio);
                     WHEN provinciaHotelNuevaReserva = 'Málaga' OR provinciaHotelNuevaReserva = 'Almería' THEN
-                        UPDATE calabaza4.RESERVA4 SET precio = NEW_precio, habitacion = NEW_habitacion, fecha_inicio = NEW_fecha_inicio, fecha_fin = NEW_fecha_fin
-                        WHERE cod_cliente = NEW_cod_cliente AND fecha_inicio = fechaInicioAntiguaReserva;
+                        DELETE FROM calabaza4.RESERVA4 WHERE cod_cliente = NEW_cod_cliente AND fecha_inicio = fechaInicioAntiguaReserva;
+                        COMMIT;
+                        INSERT INTO calabaza4.RESERVA4 VALUES (NEW_cod_hotel, NEW_cod_cliente, NEW_fecha_inicio, NEW_fecha_fin, NEW_habitacion, NEW_precio);
                 END CASE;
             ELSE 
                 SELECT precio INTO precioAntiguaReserva FROM ReservaView
@@ -424,6 +429,9 @@ BEGIN
                 (NEW_fecha_inicio <= fecha_fin AND fecha_fin <= NEW_fecha_fin)) AND
                 cod_cliente = NEW_cod_cliente;
             
+                SELECT provincia INTO provinciaHotelNuevaReserva FROM HotelView
+                WHERE cod_hotel = NEW_cod_hotel;
+                
                 CASE
                     WHEN provinciaHotelNuevaReserva = 'Granada' OR provinciaHotelNuevaReserva = 'Jaén' THEN
                         DELETE FROM calabaza1.RESERVA1 
@@ -454,6 +462,8 @@ BEGIN
                         (NEW_fecha_inicio <= fecha_fin AND fecha_fin <= NEW_fecha_fin)) AND
                         cod_cliente = NEW_cod_cliente;                
                 END CASE;
+                
+                COMMIT;
                 
                 IF (NEW_habitacion = 'Sencilla') THEN
                     SELECT n_hab_sencillas INTO totalSencillas FROM HotelView WHERE cod_hotel = NEW_cod_hotel;
@@ -571,11 +581,11 @@ END AltaActualizarReserva;
         
 -- 9. Anular una reserva
 CREATE OR REPLACE PROCEDURE AnularReserva
-    (NEW_cod_cliente NUMBER, NEW_cod_hotel NUMBER, NEW_fecha_inicio RESERVA4.fecha_inicio%TYPE,
-    NEW_fecha_fin RESERVA4.fecha_fin%TYPE)
+    (NEW_cod_cliente NUMBER, NEW_cod_hotel NUMBER, NEW_fecha_inicio calabaza1.RESERVA1.fecha_inicio%TYPE,
+    NEW_fecha_fin calabaza1.RESERVA1.fecha_fin%TYPE)
 IS
     existeReserva NUMBER;
-    provinciaHotel HOTEL4.provincia%TYPE;
+    provinciaHotel calabaza1.HOTEL1.provincia%TYPE;
 BEGIN
     SELECT COUNT(*) INTO existeReserva FROM ReservaView
     WHERE cod_cliente = NEW_cod_cliente AND cod_hotel = NEW_cod_hotel AND fecha_inicio = NEW_fecha_inicio;
@@ -607,7 +617,7 @@ END AnularReserva;
 
 -- 10. Dar de Alta un nuevo Proveedor
 CREATE OR REPLACE PROCEDURE AltaNuevoProveedor
-    (NEW_cod_proveedor NUMBER, NEW_nombre PROVEEDOR1.nombre%TYPE, NEW_ciudad PROVEEDOR1.ciudad%TYPE)
+    (NEW_cod_proveedor NUMBER, NEW_nombre calabaza1.PROVEEDOR1.nombre%TYPE, NEW_ciudad calabaza1.PROVEEDOR1.ciudad%TYPE)
 IS
 BEGIN
     CASE
@@ -630,7 +640,7 @@ IS
     existeProveedor NUMBER ;
     nSuministros NUMBER;
     cantidadSuministrada NUMBER;
-    ciudadProveedor calabaza4.PROVEEDOR1.ciudad%TYPE;
+    ciudadProveedor calabaza1.PROVEEDOR1.ciudad%TYPE;
 BEGIN
     SELECT COUNT (*) INTO existeProveedor FROM ProveedorView
     WHERE cod_proveedor = NEW_cod_proveedor;
@@ -681,17 +691,17 @@ END BajaProveedor;
 -- y del mismo artículo al mismo proveedor y en la misma fecha, se modificará la cantidad a suministrar
 CREATE OR REPLACE PROCEDURE AltaActualizarSuministro
     (NEW_cod_articulo NUMBER, NEW_cod_proveedor NUMBER, NEW_cod_hotel NUMBER, 
-    NEW_fecha_pedido DATE, NEW_cantidad NUMBER, NEW_precio SUMINISTRA4.precio%TYPE)
+    NEW_fecha_pedido DATE, NEW_cantidad NUMBER, NEW_precio calabaza1.SUMINISTRA1.precio%TYPE)
 IS 
     actualizarSuministro NUMBER;
-    provinciaHotel HOTEL4.provincia%TYPE;
-    cantidadAnterior SUMINISTRA4.cantidad%TYPE;
-    precioAnterior SUMINISTRA4.precio%TYPE;
+    provinciaHotel calabaza1.HOTEL1.provincia%TYPE;
+    cantidadAnterior calabaza1.SUMINISTRA1.cantidad%TYPE;
+    precioAnterior calabaza1.SUMINISTRA1.precio%TYPE;
     existeArticulo NUMBER;
     existeHotel NUMBER;
     existeProveedor NUMBER;
     existeVenta NUMBER;
-    ciudadProveedor PROVEEDOR1.ciudad%TYPE;
+    ciudadProveedor calabaza1.PROVEEDOR1.ciudad%TYPE;
 BEGIN 
     IF NEW_precio < 0 THEN
         raise_application_error(-20123, 'ERROR: El Precio de un Suministro tiene que ser positivo');
@@ -816,7 +826,7 @@ CREATE OR REPLACE PROCEDURE BajaSuministro
 IS 
     existeArticulo NUMBER;
     existeHotel NUMBER;
-    provinciaHotel HOTEL4.provincia%TYPE;
+    provinciaHotel calabaza1.HOTEL1.provincia%TYPE;
     existenSuministros NUMBER;
 BEGIN 
     SELECT COUNT(*) INTO existeArticulo FROM ArticuloView
@@ -882,12 +892,12 @@ END BajaSuministro;
 
 -- 14. Dar de alta un nuevo artículo
 CREATE OR REPLACE PROCEDURE AltaNuevoArticulo
-    (NEW_cod_articulo NUMBER, NEW_nombre ARTICULO.nombre%TYPE, NEW_tipo ARTICULO.tipo%TYPE, NEW_cod_proveedor NUMBER)
+    (NEW_cod_articulo NUMBER, NEW_nombre calabaza1.ARTICULO.nombre%TYPE, NEW_tipo calabaza1.ARTICULO.tipo%TYPE, NEW_cod_proveedor NUMBER)
 IS 
     existeArticulo NUMBER;
     existeProveedor NUMBER;
     existeVenta NUMBER;
-    ciudadProveedor PROVEEDOR1.ciudad%TYPE;
+    ciudadProveedor calabaza1.PROVEEDOR1.ciudad%TYPE;
 BEGIN 
     SELECT COUNT(*) INTO existeArticulo FROM ArticuloView
     WHERE cod_articulo = NEW_cod_articulo;
@@ -982,16 +992,3 @@ BEGIN
     END IF; 
 END BajaArticulo;
 /
- 
-        
-        
-        
-        
-        
-        
-
-        
-        
-        
-        
-        
