@@ -7,11 +7,14 @@ IS
     nHoteles NUMBER;
     provinciaHotel calabaza1.HOTEL1.PROVINCIA%TYPE;
 BEGIN
+    -- Vemos si existe algun hotel con este codigo
     SELECT COUNT(*) INTO nHoteles FROM HotelView WHERE cod_hotel = NEW_cod_hotel;
     
+    -- Si no existe el hotel, damos error porque no podemos asignar un empleado a un hotel que no existe
     IF nHoteles = 0 THEN
         raise_application_error(-20101, 'ERROR: No existe un Hotel con ese código');
     ELSE
+        -- Todo correcto, insertamos el nuevo empleado en la tabla que corresponda por la provincia del hotel
         SELECT provincia INTO provinciaHotel FROM HotelView WHERE cod_hotel = NEW_cod_hotel;
         CASE
             WHEN (provinciaHotel = 'Granada' OR provinciaHotel = 'Jaén') THEN
@@ -43,16 +46,19 @@ IS
     esDirector NUMBER;
     provinciaHotel calabaza1.HOTEL1.provincia%TYPE;
 BEGIN
+    -- Vemos si existe el empleado que queremos eliminar
     SELECT COUNT(*) INTO nEmpleados FROM EmpleadoView WHERE cod_empleado = NEW_cod_empleado;
     IF (nEmpleados = 0) THEN
         raise_application_error(-20102, 'ERROR: No existe un Empleado con ese código');
     ELSE
+        -- Cogemos el hotel y la fecha de inicio del contrato para guardarla en la tabla de registro
         SELECT cod_hotel INTO hotelActual FROM EmpleadoView
         WHERE cod_empleado = NEW_cod_empleado;
                 
         SELECT fecha_inicio INTO fechaInicio FROM EmpleadoView
         WHERE cod_empleado = NEW_cod_empleado;
-                
+
+        -- Almacenamos los datos del contrato acabado en el registro (replicado en todas las localidades)  
         INSERT INTO calabaza1.REGISTRO_EMPLEADOS 
         VALUES (NEW_cod_empleado, hotelActual, fechaInicio, NEW_fecha_baja);
         INSERT INTO calabaza2.REGISTRO_EMPLEADOS
@@ -62,6 +68,7 @@ BEGIN
         INSERT INTO calabaza4.REGISTRO_EMPLEADOS
         VALUES (NEW_cod_empleado, hotelActual, fechaInicio, NEW_fecha_baja);
 
+        -- Vemos si el empleado era director de alguno de los hoteles
         SELECT COUNT (*) INTO esDirector FROM HotelView 
         WHERE cod_empleado = NEW_cod_empleado;
         
@@ -69,6 +76,7 @@ BEGIN
             SELECT provincia INTO provinciaHotel FROM HotelView
             WHERE cod_empleado = NEW_cod_empleado;
             
+            -- Si es director, entonces tenemos que eliminarlo del cargo de director del hotel correspondiente
             CASE
                 WHEN provinciaHotel = 'Granada' OR provinciaHotel = 'Jaén' THEN
                     UPDATE calabaza1.HOTEL1 SET cod_empleado = NULL WHERE cod_empleado = NEW_cod_empleado;
@@ -84,6 +92,7 @@ BEGIN
         SELECT provincia INTO provinciaHotel FROM HotelView
         WHERE cod_hotel = hotelActual;
         
+        -- Acabamos eliminando de su tabla correspondiente al empleado
         CASE
             WHEN provinciaHotel = 'Granada' OR provinciaHotel = 'Jaén' THEN
                 DELETE FROM calabaza1.EMPLEADO1 WHERE cod_empleado = NEW_cod_empleado;         
@@ -107,12 +116,14 @@ IS
     hotelEmpleado NUMBER;
     provinciaHotel calabaza1.HOTEL1.provincia%TYPE;
 BEGIN
+    -- Vemos si existe el empleado al que queremos modificarle el salario
     SELECT COUNT (*) INTO nEmpleados FROM EmpleadoView
     WHERE cod_empleado = NEW_cod_empleado;
     
     IF (nEmpleados = 0) THEN
         raise_application_error(-20103, 'ERROR: No existe un Empleado con ese código');
     ELSE
+        -- Cogemos el salario anterior para comprobar que el nuevo salario es diferente al que ya tenia
         SELECT salario INTO salarioAnterior FROM EmpleadoView
         WHERE cod_empleado = NEW_cod_empleado;
         
@@ -120,6 +131,7 @@ BEGIN
             raise_application_error(-20104, 'ERROR: El Empleado ya tenía ese Salario ');
         END IF;
         
+        -- Buscamos el hotel en el que trabaja para poder hacer el UPDATE de salario en la tabla empleado que corresponda
         SELECT cod_hotel INTO hotelEmpleado FROM EmpleadoView
         WHERE cod_empleado = NEW_cod_empleado;
         
@@ -157,24 +169,28 @@ IS
     fechaContratoEmpleado DATE;
     salarioEmpleado NUMBER;
 BEGIN
+    -- Vemos si existe el empleado que queremos trasladar
     SELECT COUNT(*) INTO nEmpleado FROM EmpleadoView 
     WHERE cod_empleado = NEW_cod_empleado;
     
     IF (nEmpleado = 0) THEN
         raise_application_error(-20105, 'ERROR: No existe un Empleado con ese código');
     ELSE
+        -- Vemos si existe el hotel al que queremos trasladar el empleado
         SELECT COUNT(*) INTO existeHotel FROM HotelView 
         WHERE cod_hotel = NEW_cod_hotel;
        
         IF (existeHotel = 0) THEN 
             raise_application_error(-20106, 'ERROR: No existe un Hotel con ese código');
         ELSE
+            -- Comprobamos que no estuviera ya trabajando en ese mismo hotel al que lo ibamos a trasladar
             SELECT cod_hotel INTO antiguoHotel FROM EmpleadoView 
             WHERE cod_empleado = NEW_cod_empleado;
             
             IF (antiguoHotel = NEW_cod_hotel) THEN
                 raise_application_error(-20107, 'ERROR: El Empleado ya estaba trabajando en ese Hotel');
-            ELSE                
+            ELSE   
+                -- Guardamos en el registro el contrato actual del hotel actual             
                 SELECT fecha_inicio INTO fechaInicioEmpleado FROM EmpleadoView
                 WHERE cod_empleado = NEW_cod_empleado;
                     
@@ -187,6 +203,9 @@ BEGIN
                 INSERT INTO calabaza4.REGISTRO_EMPLEADOS 
                 VALUES (NEW_cod_empleado, antiguoHotel, fechaInicioEmpleado, NEW_fecha_fin);
                 
+                -- Actualizamos la tabla empleado correspondiente dependiendo de la ciudad en la que este el hotel al que lo trasladamos
+                    -- Si el hotel esta en la misma localidad, hacemos UPDATE en la misma tabla
+                    -- Si no, tenemos que guardar los datos del empleado y hacer un INSERT en la localidad que corresponda
                 SELECT provincia INTO provinciaHotel FROM HotelView 
                 WHERE cod_hotel = antiguoHotel;
                    
@@ -228,6 +247,7 @@ BEGIN
                                 NEW_direccion, NEW_telefono, salarioEmpleado, fechaContratoEmpleado, NEW_fecha_inicio, NEW_cod_hotel);
                         END CASE;
                         
+                        -- Ya ponemos eliminar el Empleado del hotel anterior
                         IF (provinciaHotel = 'Granada' OR provinciaHotel = 'Jaén') THEN
                             DELETE FROM calabaza1.EMPLEADO1 WHERE cod_empleado = NEW_cod_empleado;
                         ELSIF (provinciaHotel = 'Cádiz' OR provinciaHotel = 'Huelva') THEN
@@ -250,6 +270,7 @@ CREATE OR REPLACE PROCEDURE AltaNuevoHotel(NEW_cod_hotel NUMBER, NEW_nombre NVAR
     NEW_ciudad NVARCHAR2, NEW_provincia NVARCHAR2, NEW_n_hab_sencillas NUMBER, NEW_n_hab_dobles NUMBER)
 IS
 BEGIN
+    -- Dependiendo de donde este el hotel, hacemos el INSERT en la localidad correspondiente
     CASE
         WHEN NEW_provincia = 'Granada' OR NEW_provincia = 'Jaen' THEN
             INSERT INTO calabaza1.HOTEL1
@@ -278,12 +299,14 @@ IS
     nHotel NUMBER;
     provinciaHotel calabaza1.HOTEL1.provincia%TYPE;
 BEGIN
+    -- Primero vemos si existe el hotel en cuestion
     SELECT COUNT (*) INTO nHotel FROM HotelView 
     WHERE cod_hotel = NEW_cod_hotel;
     
     IF(nHotel = 0) THEN
         raise_application_error(-20109, 'ERROR: No existe un Hotel con ese código');
     ELSE
+        -- Hacemos un UPDATE dependiendo de donde este el hotel y cambiamos el codigo del empleado (director) por el nuevo director
         SELECT Provincia INTO provinciaHotel FROM HotelView 
         WHERE cod_hotel = NEW_cod_hotel;
         CASE
@@ -307,6 +330,7 @@ CREATE OR REPLACE PROCEDURE AltaNuevoCliente
 IS
     nCliente NUMBER;
 BEGIN   
+    -- Vemos si existe un cliente con ese codigo, y si no existe, lo insertamos en todas las localidades (la tabla estaba totalmente replicada)
     SELECT COUNT (*) INTO nCliente FROM ClienteView 
     WHERE cod_cliente = NEW_cod_cliente;
     
@@ -342,6 +366,7 @@ IS
     precioAntiguaReserva calabaza1.RESERVA1.precio%TYPE;
     habitacionAntiguaReserva calabaza1.RESERVA1.habitacion%TYPE;
 BEGIN
+    -- Vemos si existe ese hotel y ese cliente y verificamos que las fechas y el tipo de habitacion sean correctas
     SELECT COUNT(*) INTO existeHotel FROM HotelView WHERE cod_hotel = NEW_cod_hotel;
     SELECT COUNT(*) INTO existeCliente FROM ClienteView  WHERE cod_cliente = NEW_cod_cliente;
     IF (existeHotel = 0) THEN 
@@ -352,7 +377,8 @@ BEGIN
         raise_application_error(-20113, 'ERROR: La Fecha de Salida debe ser posterior a la de Entrada');
     ELSIF (NEW_habitacion NOT IN ('Sencilla','Doble')) THEN
         raise_application_error(-20114, 'ERROR: El tipo de Habitacion debe ser Doble o Sencilla');
-    ELSE        
+    ELSE       
+        -- Vemos si existe una reserva en esas fechas (que se solapen) 
         SELECT COUNT(*) INTO existeReserva FROM ReservaView
         WHERE ((fecha_inicio <= NEW_fecha_inicio AND NEW_fecha_fin <= fecha_fin) OR 
         (NEW_fecha_inicio <= fecha_inicio AND fecha_fin <= NEW_fecha_fin) OR
@@ -361,6 +387,7 @@ BEGIN
         cod_cliente = NEW_cod_cliente;
         
         IF (existeReserva > 0) THEN
+            -- Si existe reserva, la localizamos y guardamos todos sus atributos (como mucho puede haber una)
             SELECT cod_hotel INTO hotelAntiguaReserva FROM ReservaView
             WHERE ((fecha_inicio <= NEW_fecha_inicio AND NEW_fecha_fin <= fecha_fin) OR 
             (NEW_fecha_inicio <= fecha_inicio AND fecha_fin <= NEW_fecha_fin) OR
@@ -382,10 +409,11 @@ BEGIN
             (NEW_fecha_inicio <= fecha_fin AND fecha_fin <= NEW_fecha_fin)) AND
             cod_cliente = NEW_cod_cliente;
             
+            -- Si la reserva era en otro hotel, damos error (no podemos modificar reservas entre hoteles)
             IF (hotelAntiguaReserva != NEW_cod_hotel) THEN
                 raise_application_error(-20115, 'ERROR: Este Cliente ya tiene una reserva en otro Hotel para estas Fechas');
             ELSIF (fechaInicioAntiguaReserva <= NEW_fecha_inicio AND NEW_fecha_fin <= fechaFinAntiguaReserva) THEN
-                
+                -- Si la reserva consiste en acortar la estancia, lo hacemos inmediatamente con un DELETE, COMMIT e INSERT en la tabla correspondiente
                 SELECT provincia INTO provinciaHotelNuevaReserva FROM HotelView
                 WHERE cod_hotel = NEW_cod_hotel;
                 
@@ -415,6 +443,8 @@ BEGIN
                         INSERT INTO calabaza4.RESERVA4 VALUES (NEW_cod_hotel, NEW_cod_cliente, NEW_fecha_inicio, NEW_fecha_fin, NEW_habitacion, NEW_precio);
                 END CASE;
             ELSE 
+                -- En el caso de que no queramos simplemente acortar las fechas, guardamos los datos de la reserva y eliminamos la reserva
+                -- para poder hacer el calculo de las habitaciones libres convenientemente
                 SELECT precio INTO precioAntiguaReserva FROM ReservaView
                 WHERE ((fecha_inicio <= NEW_fecha_inicio AND NEW_fecha_fin <= fecha_fin) OR 
                 (NEW_fecha_inicio <= fecha_inicio AND fecha_fin <= NEW_fecha_fin) OR
@@ -463,6 +493,7 @@ BEGIN
                         cod_cliente = NEW_cod_cliente;                
                 END CASE;
                 
+                -- Necesario commit para poder calcular el numero de habitaciones libres
                 COMMIT;
                 
                 IF (NEW_habitacion = 'Sencilla') THEN
@@ -483,6 +514,7 @@ BEGIN
                     cod_hotel = NEW_cod_hotel AND habitacion = 'Doble';
                 END IF;
         
+                -- Si no hay habitaciones libres (sencilla o doble), volvemos a insertar la reserva que habiamos eliminado y damos un error
                 IF (NEW_habitacion = 'Sencilla' AND ocupadasSencillas >= totalSencillas) THEN
                     CASE
                         WHEN provinciaHotelNuevaReserva = 'Granada' OR provinciaHotelNuevaReserva = 'Jaén' THEN
@@ -516,6 +548,7 @@ BEGIN
                     END CASE;
                     raise_application_error(-20117, 'ERROR: En este Hotel no hay habitaciones libres Dobles para estas Fechas');
                 ELSE
+                    -- En caso de que si haya habitaciones libres, insertamos la nueva reserva en la tabla correspondiente
                     CASE
                         WHEN provinciaHotelNuevaReserva = 'Granada' OR provinciaHotelNuevaReserva = 'Jaén' THEN
                             INSERT INTO calabaza1.RESERVA1
@@ -533,6 +566,8 @@ BEGIN
                 END IF;
             END IF;
         ELSE
+            -- Si no existia reserva anterior, contabilizamos las habitaciones sencillas y dobles dependiendo del tipo que queramos 
+            -- reservar, para hacer el calculo y ver si hay libres suficientes
             IF (NEW_habitacion = 'Sencilla') THEN
                 SELECT n_hab_sencillas INTO totalSencillas FROM HotelView WHERE cod_hotel = NEW_cod_hotel;
                 SELECT COUNT(*) INTO ocupadasSencillas FROM ReservaView WHERE 
@@ -551,11 +586,13 @@ BEGIN
                 cod_hotel = NEW_cod_hotel AND habitacion = 'Doble';
             END IF;
             
+            -- Damos error si no hubiera habitaciones suficientes
             IF (NEW_habitacion = 'Sencilla' AND ocupadasSencillas >= totalSencillas) THEN
                     raise_application_error(-20118, 'ERROR: En este Hotel no hay habitaciones libres Sencillas para estas Fechas');
             ELSIF (NEW_habitacion = 'Doble' AND ocupadasDobles >= totalDobles) THEN
                 raise_application_error(-20119, 'ERROR: En este Hotel no hay habitaciones libres Dobles para estas Fechas');                
             ELSE
+                -- Vemos donde esta el hotel y hacemos el INSERT en la tabla reserva que corresponda
                 SELECT provincia INTO provinciaHotelNuevaReserva FROM HotelView
                 WHERE cod_hotel = NEW_cod_hotel;
         
@@ -587,12 +624,14 @@ IS
     existeReserva NUMBER;
     provinciaHotel calabaza1.HOTEL1.provincia%TYPE;
 BEGIN
+    -- Vemos si existe la reserva que queremos anular
     SELECT COUNT(*) INTO existeReserva FROM ReservaView
     WHERE cod_cliente = NEW_cod_cliente AND cod_hotel = NEW_cod_hotel AND fecha_inicio = NEW_fecha_inicio;
     
     IF (existeReserva = 0) THEN    
         raise_application_error(-20120, 'ERROR: No existe una Reserva con esos Datos');
     ELSE
+        -- Si existe, la eliminamos de la tabla que corresponda
         SELECT provincia INTO provinciaHotel FROM HotelView 
         WHERE cod_hotel = NEW_cod_hotel;
         
@@ -620,6 +659,7 @@ CREATE OR REPLACE PROCEDURE AltaNuevoProveedor
     (NEW_cod_proveedor NUMBER, NEW_nombre calabaza1.PROVEEDOR1.nombre%TYPE, NEW_ciudad calabaza1.PROVEEDOR1.ciudad%TYPE)
 IS
 BEGIN
+    -- Dependiendo de la ciudad del nuevo proveedor, lo insertamos en la tabla que corresponda
     CASE
         WHEN NEW_ciudad = 'Granada' THEN
             INSERT INTO calabaza1.PROVEEDOR1 VALUES (NEW_cod_proveedor, NEW_nombre, NEW_ciudad);
@@ -642,12 +682,14 @@ IS
     cantidadSuministrada NUMBER;
     ciudadProveedor calabaza1.PROVEEDOR1.ciudad%TYPE;
 BEGIN
+    -- Vemos si existe tal proveedor
     SELECT COUNT (*) INTO existeProveedor FROM ProveedorView
     WHERE cod_proveedor = NEW_cod_proveedor;
    
     IF existeProveedor = 0 THEN
         raise_application_error(-20121, 'ERROR: No existe un Proveedor con ese código');
     ELSE
+        -- Vemos si tiene suministros (y si tiene, la cantidad debe ser 0)
         SELECT COUNT(*) INTO nSuministros FROM SuministraView 
         WHERE cod_proveedor = NEW_cod_proveedor;
         
@@ -658,6 +700,7 @@ BEGIN
             IF cantidadSuministrada > 0 THEN
                 raise_application_error(-20122, 'ERROR: Existen Suministros del Proveedor que se quiere borrar');
             ELSE
+                -- Si tiene suministros, pero estan a 0, lo eliminamos de las tablas correspondientes
                 SELECT ciudad INTO ciudadProveedor FROM ProveedorView
                 WHERE cod_proveedor = NEW_cod_proveedor;
                 
@@ -671,6 +714,7 @@ BEGIN
                 END CASE;   
             END IF;
         ELSE
+            -- Si no tiene suministros, lo eliminamos de las tablas correspondientes
             SELECT ciudad INTO ciudadProveedor FROM ProveedorView
             WHERE cod_proveedor = NEW_cod_proveedor;
             
@@ -703,9 +747,11 @@ IS
     existeVenta NUMBER;
     ciudadProveedor calabaza1.PROVEEDOR1.ciudad%TYPE;
 BEGIN 
+    -- Damos error si el precio de un suministro es negativo
     IF NEW_precio < 0 THEN
         raise_application_error(-20123, 'ERROR: El Precio de un Suministro tiene que ser positivo');
     ELSE
+        -- Vemos si existe un suministro de ese proveedor a ese hotel y de ese articulo en esa fecha (en cuyo caso, debemos actualizarlo)
         SELECT COUNT(*) INTO actualizarSuministro FROM SuministraView WHERE 
         cod_articulo = NEW_cod_articulo AND cod_proveedor = NEW_cod_proveedor AND
         cod_hotel = NEW_cod_hotel AND fecha_pedido = NEW_fecha_pedido;
@@ -722,6 +768,8 @@ BEGIN
             cod_articulo = NEW_cod_articulo AND cod_proveedor = NEW_cod_proveedor AND
             cod_hotel = NEW_cod_hotel AND fecha_pedido = NEW_fecha_pedido;
             
+            -- Actualizamos convenientemente dependiendo de la cantidad (positiva o negativa) haciendo la media de los precios para obtener
+            -- el precio por unidad correcto, asi como en el caso de que sea una cantidad negativa. Todo ello, en la tabla correspondiente
             CASE
                 WHEN provinciaHotel = 'Granada' OR provinciaHotel = 'Jaén' THEN
                     IF NEW_cantidad > 0 THEN
@@ -765,6 +813,8 @@ BEGIN
                     END IF;
             END CASE;
         ELSE
+            -- En el caso de que no sea una actualizacion, tenemos que asegurarnos que existen los diferentes elementos y que el proveedor
+            -- puede suministrar a un hotel en sus respectivas localidades
             SELECT COUNT(*) INTO existeArticulo FROM ArticuloView
             WHERE cod_articulo = NEW_cod_articulo;
             
@@ -798,6 +848,7 @@ BEGIN
             ELSIF ciudadProveedor = 'Sevilla' AND (provinciaHotel NOT IN ('Córdoba','Sevilla','Cádiz','Huelva')) THEN
                 raise_application_error(-20129, 'ERROR: Un Proveedor de Sevilla solo puede Suministrar a Hoteles de Córdoba, Sevilla, Cádiz o Huelva');
             ELSE
+                -- Si todo esta correcto, hacemos el INSERT en la tabla que corresponda
                 CASE
                     WHEN provinciaHotel = 'Granada' OR provinciaHotel = 'Jaén' THEN
                         INSERT INTO calabaza1.SUMINISTRA1 
@@ -829,6 +880,7 @@ IS
     provinciaHotel calabaza1.HOTEL1.provincia%TYPE;
     existenSuministros NUMBER;
 BEGIN 
+    -- Vemos si existen los participantes en el suministro
     SELECT COUNT(*) INTO existeArticulo FROM ArticuloView
     WHERE cod_articulo = NEW_cod_articulo;
     
@@ -843,6 +895,7 @@ BEGIN
     ELSIF existeHotel = 0 THEN
         raise_application_error(-20131, 'ERROR: No existe un Hotel con ese código');
     ELSIF (NEW_fecha_pedido IS NOT NULL) THEN
+        -- Si nos dan una fecha, tenemos que ver si existe un suministro en esa fecha y eliminarlo de la localidad adecuada
         SELECT COUNT(*) INTO existenSuministros FROM SuministraView
         WHERE cod_articulo = NEW_cod_articulo AND cod_hotel = NEW_cod_hotel AND fecha_pedido = NEW_fecha_pedido;
         
@@ -865,6 +918,7 @@ BEGIN
             END CASE;
         END IF;
     ELSE
+        -- Si no nos dan fecha, eliminamos todos los suministros de ese articulo a ese hotel
         SELECT COUNT (*) INTO existenSuministros FROM SuministraView
         WHERE cod_articulo = NEW_cod_articulo AND cod_hotel = NEW_cod_hotel;
         
@@ -899,6 +953,7 @@ IS
     existeVenta NUMBER;
     ciudadProveedor calabaza1.PROVEEDOR1.ciudad%TYPE;
 BEGIN 
+    -- Comprobamos que el articulo sea nuevo y que el proveedor existe
     SELECT COUNT(*) INTO existeArticulo FROM ArticuloView
     WHERE cod_articulo = NEW_cod_articulo;
     
@@ -915,6 +970,7 @@ BEGIN
     ELSIF existeVenta > 0 THEN
         raise_application_error(-20125, 'ERROR: Este Proveedor ya vendía ese Artículo');
     ELSE
+        -- Insertamos el articulo a su tabla (replicada) y la venta en la tabla vende correspondiente dependiendo de la ciudad del proveedor
         INSERT INTO calabaza1.ARTICULO VALUES (NEW_cod_articulo, NEW_nombre, NEW_tipo);
         INSERT INTO calabaza2.ARTICULO VALUES (NEW_cod_articulo, NEW_nombre, NEW_tipo);
         INSERT INTO calabaza3.ARTICULO VALUES (NEW_cod_articulo, NEW_nombre, NEW_tipo);
@@ -947,12 +1003,14 @@ IS
     nProveedores NUMBER;
     proveedorArticulo NUMBER;
 BEGIN
+    -- Vemos si existe tal articulo
     SELECT COUNT(*) INTO existeArticulo FROM ArticuloView
     WHERE cod_articulo = NEW_cod_articulo;
     
     IF existeArticulo = 0 THEN 
         raise_application_error(-20126, 'ERROR: No existe un Artículo con ese código');
     ELSE
+        -- Vemos si existen suministros de ese articulo (deben no existir o tener 0 como cantidad)
         SELECT COUNT(*) INTO nSuministros FROM SuministraView 
         WHERE cod_articulo = NEW_cod_articulo;
         
@@ -963,6 +1021,7 @@ BEGIN
             IF cantidadSuministrada > 0 THEN
                 raise_application_error(-20127, 'ERROR: Existen Suministros del Artículo que se quiere borrar');
             ELSE
+                -- Si hay suministros pero estan a 0, eliminamos el articulo de su tabla, de la tabla vende y todos sus suministros
                 DELETE FROM calabaza1.SUMINISTRA1 WHERE cod_articulo = NEW_cod_articulo;
                 DELETE FROM calabaza2.SUMINISTRA2 WHERE cod_articulo = NEW_cod_articulo;
                 DELETE FROM calabaza3.SUMINISTRA3 WHERE cod_articulo = NEW_cod_articulo;
@@ -979,6 +1038,7 @@ BEGIN
                 DELETE FROM calabaza4.ARTICULO WHERE cod_articulo = NEW_cod_articulo;
             END IF;
         ELSE
+            -- Si no hay suministros, eliminamos el articulo de su tabla y de la tabla vende 
             DELETE FROM calabaza1.VENDE1 WHERE cod_articulo = NEW_cod_articulo;
             DELETE FROM calabaza2.VENDE2 WHERE cod_articulo = NEW_cod_articulo;
             DELETE FROM calabaza3.VENDE2 WHERE cod_articulo = NEW_cod_articulo;
