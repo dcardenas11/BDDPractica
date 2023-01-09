@@ -1015,97 +1015,122 @@ IS
     fechaContratoEmpleado DATE;
     salarioEmpleado NUMBER;
 BEGIN
-    SELECT COUNT(*) INTO nEmpleado FROM EmpleadoView 
-    WHERE cod_empleado = NEW_cod_empleado;
+    -- Para las restricciones de las fechas, tenemos que comprobar dos cosas: 
+    --  1. La fecha de inicio del siguiente contrato es posterior a la fecha de fin del anterior
+    --  2. La fecha de fin del anterior contrato es posterior a la fecha de inicio del anterior contrato
+
+    -- Con estas dos restricciones nos aseguramos que vamos a poder insertar tanto en registro como en empleado, porque al insertar el empleado ya se han comprobado el resto de restricciones
     
-    IF (nEmpleado = 0) THEN
-        raise_application_error(-20105, 'ERROR: No existe un Empleado con ese código');
+    IF (NEW_fecha_fin > NEW_fecha_inicio) THEN
+        raise_application_error(-20128, 'ERROR: La fecha de final del contrato debe ser siempre anterior a la fecha de inicio de su siguiente contrato');
+    
     ELSE
-        SELECT COUNT(*) INTO existeHotel FROM HotelView 
-        WHERE cod_hotel = NEW_cod_hotel;
-       
-        IF (existeHotel = 0) THEN 
-            raise_application_error(-20106, 'ERROR: No existe un Hotel con ese código');
+        SELECT COUNT(*) INTO nEmpleado FROM EmpleadoView 
+        WHERE cod_empleado = NEW_cod_empleado;
+        
+        IF (nEmpleado = 0) THEN
+            raise_application_error(-20105, 'ERROR: No existe un Empleado con ese código');
         ELSE
-            SELECT cod_hotel INTO antiguoHotel FROM EmpleadoView 
-            WHERE cod_empleado = NEW_cod_empleado;
-            
-            IF (antiguoHotel = NEW_cod_hotel) THEN
-                raise_application_error(-20107, 'ERROR: El Empleado ya estaba trabajando en ese Hotel');
-            ELSE                
-                SELECT fecha_inicio INTO fechaInicioEmpleado FROM EmpleadoView
+            SELECT COUNT(*) INTO existeHotel FROM HotelView 
+            WHERE cod_hotel = NEW_cod_hotel;
+        
+            IF (existeHotel = 0) THEN 
+                raise_application_error(-20106, 'ERROR: No existe un Hotel con ese código');
+            ELSE
+                
+
+
+                SELECT cod_hotel INTO antiguoHotel FROM EmpleadoView 
                 WHERE cod_empleado = NEW_cod_empleado;
-                    
-                INSERT INTO calabaza1.REGISTRO_EMPLEADOS
-                VALUES (NEW_cod_empleado, antiguoHotel, fechaInicioEmpleado, NEW_fecha_fin);
-                INSERT INTO calabaza2.REGISTRO_EMPLEADOS 
-                VALUES (NEW_cod_empleado, antiguoHotel, fechaInicioEmpleado, NEW_fecha_fin);
-                INSERT INTO calabaza3.REGISTRO_EMPLEADOS 
-                VALUES (NEW_cod_empleado, antiguoHotel, fechaInicioEmpleado, NEW_fecha_fin);
-                INSERT INTO calabaza4.REGISTRO_EMPLEADOS 
-                VALUES (NEW_cod_empleado, antiguoHotel, fechaInicioEmpleado, NEW_fecha_fin);
                 
-                SELECT provincia INTO provinciaHotel FROM HotelView 
-                WHERE cod_hotel = antiguoHotel;
-                   
-                SELECT provincia INTO provinciaNuevoHotel FROM HotelView 
-                WHERE cod_hotel = NEW_cod_hotel;
-                
-                CASE
-                    WHEN (provinciaHotel = 'Granada' OR provinciaHotel = 'Jaén') AND (provinciaNuevoHotel = 'Granada' OR provinciaNuevoHotel = 'Jaén') THEN
-                        UPDATE calabaza1.EMPLEADO1 SET cod_hotel = NEW_cod_hotel, telefono = NEW_telefono, direccion = NEW_direccion
-                        WHERE cod_empleado = NEW_cod_empleado;    
-                    WHEN (provinciaHotel = 'Cádiz' OR provinciaHotel = 'Huelva') AND (provinciaNuevoHotel = 'Cádiz' OR provinciaNuevoHotel = 'Huelva') THEN
-                        UPDATE calabaza2.EMPLEADO2 SET cod_hotel = NEW_cod_hotel, telefono = NEW_telefono, direccion = NEW_direccion
-                        WHERE cod_empleado = NEW_cod_empleado;
-                    WHEN (provinciaHotel = 'Sevilla' OR provinciaHotel = 'Córdoba') AND (provinciaNuevoHotel = 'Sevilla' OR provinciaNuevoHotel = 'Córdoba') THEN
-                        UPDATE calabaza3.EMPLEADO3 SET cod_hotel = NEW_cod_hotel, telefono = NEW_telefono, direccion = NEW_direccion
-                        WHERE cod_empleado = NEW_cod_empleado;
-                    WHEN (provinciaHotel = 'Málaga' OR provinciaHotel = 'Almería') AND (provinciaNuevoHotel = 'Málaga' OR provinciaNuevoHotel = 'Almería') THEN
-                        UPDATE calabaza4.EMPLEADO4 SET cod_hotel = NEW_cod_hotel, telefono = NEW_telefono, direccion = NEW_direccion
-                        WHERE cod_empleado = NEW_cod_empleado;
-                    
+                IF (antiguoHotel = NEW_cod_hotel) THEN
+                    raise_application_error(-20107, 'ERROR: El Empleado ya estaba trabajando en ese Hotel');
+                ELSE                
+                    SELECT fecha_inicio INTO fechaInicioEmpleado FROM EmpleadoView
+                    WHERE cod_empleado = NEW_cod_empleado;
+
+                    -- Comprobamos la segunda de las restricciones
+
+                    IF (fechaInicioEmpleado> NEW_fecha_fin) THEN
+                        raise_application_error(-20129, 'ERROR: La fecha de final del contrato debe ser siempre posterior a la fecha de inicio de dicho contrato');
+    
                     ELSE
-                        SELECT dni INTO dniEmpleado FROM EmpleadoView WHERE cod_empleado = NEW_cod_empleado;
-                        SELECT salario INTO salarioEmpleado FROM EmpleadoView WHERE cod_empleado = NEW_cod_empleado;
-                        SELECT fecha_contrato INTO fechaContratoEmpleado FROM EmpleadoView WHERE cod_empleado = NEW_cod_empleado;
-                        SELECT nombre INTO nombreEmpleado FROM EmpleadoView WHERE cod_empleado = NEW_cod_empleado;
                         
-                        IF (provinciaHotel = 'Granada' OR provinciaHotel = 'Jaén') THEN
-                            DELETE FROM calabaza1.EMPLEADO1 WHERE cod_empleado = NEW_cod_empleado;
-                            COMMIT;
-                        ELSIF (provinciaHotel = 'Cádiz' OR provinciaHotel = 'Huelva') THEN
-                            DELETE FROM calabaza2.EMPLEADO2 WHERE cod_empleado = NEW_cod_empleado;
-                            COMMIT;
-                        ELSIF (provinciaHotel = 'Sevilla' OR provinciaHotel = 'Córdoba') THEN
-                            DELETE FROM calabaza3.EMPLEADO3 WHERE cod_empleado = NEW_cod_empleado;
-                            COMMIT;
-                        ELSIF (provinciaHotel = 'Málaga' OR provinciaHotel = 'Almería') THEN
-                            DELETE FROM calabaza4.EMPLEADO4 WHERE cod_empleado = NEW_cod_empleado;
-                            COMMIT;
-                        END IF;
+                        INSERT INTO calabaza1.REGISTRO_EMPLEADOS
+                        VALUES (NEW_cod_empleado, antiguoHotel, fechaInicioEmpleado, NEW_fecha_fin);
+                        INSERT INTO calabaza2.REGISTRO_EMPLEADOS 
+                        VALUES (NEW_cod_empleado, antiguoHotel, fechaInicioEmpleado, NEW_fecha_fin);
+                        INSERT INTO calabaza3.REGISTRO_EMPLEADOS 
+                        VALUES (NEW_cod_empleado, antiguoHotel, fechaInicioEmpleado, NEW_fecha_fin);
+                        INSERT INTO calabaza4.REGISTRO_EMPLEADOS 
+                        VALUES (NEW_cod_empleado, antiguoHotel, fechaInicioEmpleado, NEW_fecha_fin);
                         
-                        CASE 
-                            WHEN (provinciaNuevoHotel = 'Granada' OR provinciaNuevoHotel = 'Jaén') THEN
-                                INSERT INTO calabaza1.EMPLEADO1 VALUES (NEW_cod_empleado, dniEmpleado, nombreEmpleado, 
-                                NEW_direccion, NEW_telefono, salarioEmpleado, fechaContratoEmpleado, NEW_fecha_inicio, NEW_cod_hotel);
-                            WHEN (provinciaNuevoHotel = 'Cádiz' OR provinciaNuevoHotel = 'Huelva') THEN
-                                INSERT INTO calabaza2.EMPLEADO2 VALUES (NEW_cod_empleado, dniEmpleado, nombreEmpleado, 
-                                NEW_direccion, NEW_telefono, salarioEmpleado, fechaContratoEmpleado, NEW_fecha_inicio, NEW_cod_hotel);
-                            WHEN (provinciaNuevoHotel = 'Sevilla' OR provinciaNuevoHotel = 'Córdoba') THEN
-                                INSERT INTO calabaza3.EMPLEADO3 VALUES (NEW_cod_empleado, dniEmpleado, nombreEmpleado, 
-                                NEW_direccion, NEW_telefono, salarioEmpleado, fechaContratoEmpleado, NEW_fecha_inicio, NEW_cod_hotel);
-                            WHEN (provinciaNuevoHotel = 'Málaga' OR provinciaNuevoHotel = 'Almería') THEN
-                                INSERT INTO calabaza4.EMPLEADO4 VALUES (NEW_cod_empleado, dniEmpleado, nombreEmpleado, 
-                                NEW_direccion, NEW_telefono, salarioEmpleado, fechaContratoEmpleado, NEW_fecha_inicio, NEW_cod_hotel);
+                        SELECT provincia INTO provinciaHotel FROM HotelView 
+                        WHERE cod_hotel = antiguoHotel;
+                        
+                        SELECT provincia INTO provinciaNuevoHotel FROM HotelView 
+                        WHERE cod_hotel = NEW_cod_hotel;
+                        
+                        CASE
+                            WHEN (provinciaHotel = 'Granada' OR provinciaHotel = 'Jaén') AND (provinciaNuevoHotel = 'Granada' OR provinciaNuevoHotel = 'Jaén') THEN
+                                UPDATE calabaza1.EMPLEADO1 SET cod_hotel = NEW_cod_hotel, telefono = NEW_telefono, direccion = NEW_direccion
+                                WHERE cod_empleado = NEW_cod_empleado;    
+                            WHEN (provinciaHotel = 'Cádiz' OR provinciaHotel = 'Huelva') AND (provinciaNuevoHotel = 'Cádiz' OR provinciaNuevoHotel = 'Huelva') THEN
+                                UPDATE calabaza2.EMPLEADO2 SET cod_hotel = NEW_cod_hotel, telefono = NEW_telefono, direccion = NEW_direccion
+                                WHERE cod_empleado = NEW_cod_empleado;
+                            WHEN (provinciaHotel = 'Sevilla' OR provinciaHotel = 'Córdoba') AND (provinciaNuevoHotel = 'Sevilla' OR provinciaNuevoHotel = 'Córdoba') THEN
+                                UPDATE calabaza3.EMPLEADO3 SET cod_hotel = NEW_cod_hotel, telefono = NEW_telefono, direccion = NEW_direccion
+                                WHERE cod_empleado = NEW_cod_empleado;
+                            WHEN (provinciaHotel = 'Málaga' OR provinciaHotel = 'Almería') AND (provinciaNuevoHotel = 'Málaga' OR provinciaNuevoHotel = 'Almería') THEN
+                                UPDATE calabaza4.EMPLEADO4 SET cod_hotel = NEW_cod_hotel, telefono = NEW_telefono, direccion = NEW_direccion
+                                WHERE cod_empleado = NEW_cod_empleado;
+                            
+                            ELSE
+                                SELECT dni INTO dniEmpleado FROM EmpleadoView WHERE cod_empleado = NEW_cod_empleado;
+                                SELECT salario INTO salarioEmpleado FROM EmpleadoView WHERE cod_empleado = NEW_cod_empleado;
+                                SELECT fecha_contrato INTO fechaContratoEmpleado FROM EmpleadoView WHERE cod_empleado = NEW_cod_empleado;
+                                SELECT nombre INTO nombreEmpleado FROM EmpleadoView WHERE cod_empleado = NEW_cod_empleado;
+                                
+
+                                IF (provinciaHotel = 'Granada' OR provinciaHotel = 'Jaén') THEN
+                                    DELETE FROM calabaza1.EMPLEADO1 WHERE cod_empleado = NEW_cod_empleado;
+                                    COMMIT;
+                                ELSIF (provinciaHotel = 'Cádiz' OR provinciaHotel = 'Huelva') THEN
+                                    DELETE FROM calabaza2.EMPLEADO2 WHERE cod_empleado = NEW_cod_empleado;
+                                    COMMIT;
+                                ELSIF (provinciaHotel = 'Sevilla' OR provinciaHotel = 'Córdoba') THEN
+                                    DELETE FROM calabaza3.EMPLEADO3 WHERE cod_empleado = NEW_cod_empleado;
+                                    COMMIT;
+                                ELSIF (provinciaHotel = 'Málaga' OR provinciaHotel = 'Almería') THEN
+                                    DELETE FROM calabaza4.EMPLEADO4 WHERE cod_empleado = NEW_cod_empleado;
+                                    COMMIT;
+                                END IF;
+
+
+                                CASE 
+                                    WHEN (provinciaNuevoHotel = 'Granada' OR provinciaNuevoHotel = 'Jaén') THEN
+                                        INSERT INTO calabaza1.EMPLEADO1 VALUES (NEW_cod_empleado, dniEmpleado, nombreEmpleado, 
+                                        NEW_direccion, NEW_telefono, salarioEmpleado, fechaContratoEmpleado, NEW_fecha_inicio, NEW_cod_hotel);
+                                    WHEN (provinciaNuevoHotel = 'Cádiz' OR provinciaNuevoHotel = 'Huelva') THEN
+                                        INSERT INTO calabaza2.EMPLEADO2 VALUES (NEW_cod_empleado, dniEmpleado, nombreEmpleado, 
+                                        NEW_direccion, NEW_telefono, salarioEmpleado, fechaContratoEmpleado, NEW_fecha_inicio, NEW_cod_hotel);
+                                    WHEN (provinciaNuevoHotel = 'Sevilla' OR provinciaNuevoHotel = 'Córdoba') THEN
+                                        INSERT INTO calabaza3.EMPLEADO3 VALUES (NEW_cod_empleado, dniEmpleado, nombreEmpleado, 
+                                        NEW_direccion, NEW_telefono, salarioEmpleado, fechaContratoEmpleado, NEW_fecha_inicio, NEW_cod_hotel);
+                                    WHEN (provinciaNuevoHotel = 'Málaga' OR provinciaNuevoHotel = 'Almería') THEN
+                                        INSERT INTO calabaza4.EMPLEADO4 VALUES (NEW_cod_empleado, dniEmpleado, nombreEmpleado, 
+                                        NEW_direccion, NEW_telefono, salarioEmpleado, fechaContratoEmpleado, NEW_fecha_inicio, NEW_cod_hotel);
+                                END CASE;
+                                
+                                
                         END CASE;
-                        
-                        
-                END CASE;
+                    END IF;
+                END IF;
             END IF;
         END IF;
     END IF;
     DBMS_OUTPUT.PUT_LINE('EL EMPLEADO ' || NEW_cod_empleado || ' SE TRASLADÓ CORRECTAMENTE AL HOTEL ' || NEW_cod_hotel);
+
 END TrasladarEmpleado;
 /
 
