@@ -258,7 +258,6 @@ INSERT INTO VENDE2 VALUES(12, 2);
 INSERT INTO VENDE2 VALUES(13, 2); 
 INSERT INTO VENDE2 VALUES(14, 2); 
 INSERT INTO VENDE2 VALUES(15, 2); 
-
 CREATE OR REPLACE TRIGGER HotelTrigger
     BEFORE INSERT OR UPDATE 
     ON HOTEL2
@@ -341,35 +340,20 @@ BEGIN
         SELECT COUNT(*) INTO registrosEmpleado FROM RegistroView WHERE cod_empleado=:NEW.cod_empleado;
         
         IF (registrosEmpleado > 0) THEN
-            -- Tenemos que comparar la nueva fecha de fin con las fechas de inicio que van detrás
+            -- Tenemos que comparar la nueva fecha de fin con las fechas de inicio que van detrás, y con las fechas de fin que van delante
             SELECT MIN(fecha_inicio) INTO minFechaEmpleado FROM RegistroView WHERE cod_empleado=:NEW.cod_empleado AND fecha_inicio > :NEW.fecha_inicio;
-            
+            SELECT MAX(fecha_fin) INTO maxFechaEmpleado FROM RegistroView WHERE cod_empleado=:NEW.cod_empleado AND fecha_fin < :NEW.fecha_fin;
             IF (minFechaEmpleado < :NEW.fecha_fin) THEN
                 raise_application_error(-20007, 'ERROR: La fecha de fin de un contrato registrado de un empleado no puede ser posterior a la fecha de inicio de su siguiente contrato registrado');    
+            END IF;
+
+            IF(maxFechaEmpleado > :NEW.fecha_inicio) THEN
+                raise_application_error(-20008, 'ERROR: La fecha de inicio de un contrato registrado de un empleado no puede ser anterior a la fecha de fin de su contrato anterior registrado');    
             END IF;
         END IF;
     END IF;
 
-    IF (INSERTING) THEN
-
-        SELECT COUNT(*) INTO existeContratoActivo FROM EmpleadoView WHERE cod_empleado=:NEW.cod_empleado;
-
-        IF (existeContratoActivo>0) THEN
-            SELECT fecha_inicio INTO contratoActual FROM EmpleadoView WHERE cod_empleado=:NEW.cod_empleado;
-            IF (:NEW.fecha_inicio > contratoActual) THEN
-                raise_application_error(-20008, 'ERROR: La fecha de inicio de un contrato registrado no puede ser posterior a la fecha de inicio de su contrato actual');    
-            END IF;
-        END IF;
-
-        SELECT COUNT(*) INTO registrosEmpleado FROM RegistroView WHERE cod_empleado=:NEW.cod_empleado;
-        IF (registrosEmpleado >0) THEN
-            -- Tenemos que comparar la nueva fecha de fin con las fechas de inicio que van detrás
-            SELECT MAX(fecha_fin) INTO minFechaEmpleado FROM RegistroView WHERE cod_empleado=:NEW.cod_empleado AND fecha_inicio < :NEW.fecha_inicio;
-            IF (maxFechaEmpleado > :NEW.fecha_inicio) THEN
-                raise_application_error(-20009, 'ERROR: La fecha de incio de un contrato registrado de un empleado no puede ser anterior a la fecha de final de su anterior contrato registrado');    
-            END IF;
-        END IF;
-    END IF;    
+    
 END;
 /
 
@@ -879,6 +863,7 @@ BEGIN
     END IF;
 END;
 /
+
 
 -- 1. Dar de alta un nuevo empleado
 CREATE OR REPLACE PROCEDURE AltaNuevoEmpleado

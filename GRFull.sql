@@ -267,6 +267,9 @@ INSERT INTO VENDE1 VALUES(13, 3);
 INSERT INTO VENDE1 VALUES(14, 3); 
 INSERT INTO VENDE1 VALUES(15, 3); 
 
+
+
+
 CREATE OR REPLACE TRIGGER HotelTrigger
     BEFORE INSERT OR UPDATE 
     ON HOTEL1
@@ -288,8 +291,10 @@ BEGIN
     
     -- 7. El director de un hotel es un empleado de la multinacional
     IF (:NEW.cod_empleado IS NOT NULL) THEN  
+        -- Contamos cuántos empleados hay con ese código, si  no hay ninguno el director no es empleado
         SELECT COUNT(*) INTO directorEsEmpleado FROM EmpleadoView 
         WHERE :NEW.cod_empleado = EmpleadoView.cod_empleado;
+        
         
         IF (UPDATING('cod_empleado') OR INSERTING) THEN
             IF directorEsEmpleado = 0 THEN
@@ -299,6 +304,8 @@ BEGIN
     END IF;
     
     -- 8. Un empleado sólo puede ser director de un hotel
+
+    -- Contamos cuántos hoteles hay con ese código de empleado, si hay más de uno el director actual ya es director de otro hotel
     SELECT COUNT(*) INTO directorYaEsDirector FROM HotelView
     WHERE :NEW.cod_empleado = cod_empleado;
     
@@ -335,6 +342,7 @@ BEGIN
     -- 11. La fecha de inicio de un empleado en un hotel será siempre igual o posterior a la fecha de inicio de su contrato con la multinacional
     IF (INSERTING) THEN
 
+        -- Primero comprobamos si existe un contrato activo, en cuyo caso cualquier registro tiene que ir antes de la fecha de inicio de dicho contrato
         SELECT COUNT(*) INTO existeContratoActivo FROM EmpleadoView WHERE cod_empleado=:NEW.cod_empleado;
 
         IF (existeContratoActivo>0) THEN
@@ -345,38 +353,24 @@ BEGIN
             END IF;
         END IF;
 
+        -- Después comprobamos el resto de registros para ese empleado, y comparamos las fechas de fin
         SELECT COUNT(*) INTO registrosEmpleado FROM RegistroView WHERE cod_empleado=:NEW.cod_empleado;
         
         IF (registrosEmpleado > 0) THEN
-            -- Tenemos que comparar la nueva fecha de fin con las fechas de inicio que van detrás
+            -- Tenemos que comparar la nueva fecha de fin con las fechas de inicio que van detrás, y con las fechas de fin que van delante
             SELECT MIN(fecha_inicio) INTO minFechaEmpleado FROM RegistroView WHERE cod_empleado=:NEW.cod_empleado AND fecha_inicio > :NEW.fecha_inicio;
-            
+            SELECT MAX(fecha_fin) INTO maxFechaEmpleado FROM RegistroView WHERE cod_empleado=:NEW.cod_empleado AND fecha_fin < :NEW.fecha_fin;
             IF (minFechaEmpleado < :NEW.fecha_fin) THEN
                 raise_application_error(-20007, 'ERROR: La fecha de fin de un contrato registrado de un empleado no puede ser posterior a la fecha de inicio de su siguiente contrato registrado');    
+            END IF;
+
+            IF(maxFechaEmpleado > :NEW.fecha_inicio) THEN
+                raise_application_error(-20008, 'ERROR: La fecha de inicio de un contrato registrado de un empleado no puede ser anterior a la fecha de fin de su contrato anterior registrado');    
             END IF;
         END IF;
     END IF;
 
-    IF (INSERTING) THEN
-
-        SELECT COUNT(*) INTO existeContratoActivo FROM EmpleadoView WHERE cod_empleado=:NEW.cod_empleado;
-
-        IF (existeContratoActivo>0) THEN
-            SELECT fecha_inicio INTO contratoActual FROM EmpleadoView WHERE cod_empleado=:NEW.cod_empleado;
-            IF (:NEW.fecha_inicio > contratoActual) THEN
-                raise_application_error(-20008, 'ERROR: La fecha de inicio de un contrato registrado no puede ser posterior a la fecha de inicio de su contrato actual');    
-            END IF;
-        END IF;
-
-        SELECT COUNT(*) INTO registrosEmpleado FROM RegistroView WHERE cod_empleado=:NEW.cod_empleado;
-        IF (registrosEmpleado >0) THEN
-            -- Tenemos que comparar la nueva fecha de fin con las fechas de inicio que van detrás
-            SELECT MAX(fecha_fin) INTO minFechaEmpleado FROM RegistroView WHERE cod_empleado=:NEW.cod_empleado AND fecha_inicio < :NEW.fecha_inicio;
-            IF (maxFechaEmpleado > :NEW.fecha_inicio) THEN
-                raise_application_error(-20009, 'ERROR: La fecha de incio de un contrato registrado de un empleado no puede ser anterior a la fecha de final de su anterior contrato registrado');    
-            END IF;
-        END IF;
-    END IF;    
+     
 END;
 /
 
@@ -427,9 +421,13 @@ BEGIN
     
     -- 20. Un artículo solo puede borrarse si la cantidad suministrada es 0 o no existe ningún suministro
     IF DELETING THEN
+
+        -- Primero comprobamos si hay suministros con ese artículo
         SELECT COUNT(*) INTO haySuministros FROM SuministraView WHERE cod_articulo=:OLD.cod_articulo;
         
         IF haySuministros > 0 THEN
+
+            -- En caso de que haya, comprobamos si la cantidad suministrada es 0
             SELECT SUM(cantidad) INTO nSuministros FROM SuministraView WHERE cod_articulo=:OLD.cod_articulo;
         
             IF nSuministros > 0 THEN
@@ -468,9 +466,11 @@ BEGIN
     
     -- 19. Un proveedor solo puede borrarse si la cantidad suministrada es 0 o no existe ningún suministro
     IF DELETING THEN
+        -- Primero comprobamos si hay suministros con ese proveedor
         SELECT COUNT(*) INTO haySuministros FROM SuministraView WHERE cod_proveedor=:OLD.cod_proveedor;
         
         IF haySuministros > 0 THEN
+            -- Si hay suministros, comprobamos si la cantidad suministrada es 0
             SELECT SUM(cantidad) INTO nSuministros FROM SuministraView WHERE cod_proveedor=:OLD.cod_proveedor;
         
             IF nSuministros > 0 THEN
@@ -523,6 +523,13 @@ BEGIN
     SELECT COUNT(*) INTO nProveedoresMismoArticulo FROM VendeView
     WHERE cod_articulo = :NEW.cod_articulo;
     
+    -- En este caso es necesario separar entre inserción o actualización:
+        -- Si insertamos y hay dos proveedores, error
+        -- Si insertamos y hay un proveedor, tenemos que comprobar que las ciudades no coinciden, si coinciden, error
+        -- Si actualizamos y hay dos proveedores, tenemos que comprobar si la ciudad antigua y la ciudad nueva coinciden
+            -- Si coinciden,  no hay error
+            -- Si no coinciden, error
+        
     IF nProveedoresMismoArticulo > 0 THEN 
         IF nProveedoresMismoArticulo = 2 AND INSERTING THEN
             raise_application_error(-20024, 'ERROR: Un Artículo sólo puede ser Suministrado por dos Proveedores (uno de Granada y otro de Sevilla)');
@@ -623,22 +630,27 @@ BEGIN
     
     -- 14. El precio de un artículo no podrá ser menor que el de ese mismo artículo en otros suministros al mismo hotel 
     IF (UPDATING('precio') OR UPDATING('fecha_pedido') OR INSERTING) THEN
+
+        -- Primero contamos los suministros que hay de ese artículo en ese hotel
         SELECT COUNT(*) INTO haySuministro FROM SuministraView
         WHERE (cod_hotel=:NEW.cod_hotel AND cod_articulo=:NEW.cod_articulo);
         
-        -- Si hay más suministros aparte del que estamos modificando
+        -- Si hay más suministros comprobamos si es el primero, el último o si se está modificando/insertando en el medio
         IF (haySuministro > 0) THEN
 
+            -- Comprobamos cuál es la menor fecha de suministro de ese artículo en ese hotel
             SELECT MIN(fecha_pedido) INTO fechaInicial FROM SuministraView 
             WHERE (cod_articulo = :NEW.cod_articulo) 
             AND (cod_hotel = :NEW.cod_hotel);
-
+            -- Comprobamos cuál es la mayor fecha de suministro de ese artículo en ese hotel
             SELECT MAX(fecha_pedido) INTO fechaFinal FROM SuministraView 
             WHERE (cod_articulo = :NEW.cod_articulo) 
             AND (cod_hotel = :NEW.cod_hotel);
 
             -- Si se está modificando el precio de un suministro que está en medio
             IF (:NEW.fecha_pedido > fechaInicial AND :NEW.fecha_pedido < fechaFinal )  THEN
+
+                -- Almacenamos el precio mínimo y el máximo que puede tener 
                 SELECT MAX(precio) INTO minPrecio FROM SuministraView
                 WHERE (cod_articulo = :NEW.cod_articulo) 
                 AND (cod_hotel = :NEW.cod_hotel)
@@ -658,6 +670,7 @@ BEGIN
                 END IF;
 
             ELSE 
+                -- Si está al principio, comprobamos que el precio no sea mayor que el de los suministros posteriores
                 IF (:NEW.fecha_pedido < fechaInicial) THEN 
                     SELECT precio INTO maxPrecio FROM SuministraView
                     WHERE (cod_articulo = :NEW.cod_articulo) 
@@ -669,6 +682,7 @@ BEGIN
                     END IF;
                 END IF;
                 
+                -- Si está al final, comprobamos que el precio no sea menor que el de los suministros anteriores
                 IF (:NEW.fecha_pedido > fechaInicial) THEN 
                     SELECT precio INTO minPrecio FROM SuministraView
                     WHERE (SuministraView.cod_articulo = :NEW.cod_articulo) 
@@ -740,7 +754,10 @@ BEGIN
     END IF;
     
     -- 4. El número de reservas de un hotel no podrá exceder su capacidad (sencillas, dobles y totales)
+
+    
     IF (UPDATING('habitacion') OR UPDATING('fecha_inicio') OR UPDATING('fecha_fin') OR INSERTING) THEN
+        -- Contamos el número de sencillas en las fechas que coincidan con la reserva (se puede solapar)
         SELECT COUNT(*) INTO sencillasReservadas FROM ReservaView
         WHERE ((fecha_inicio <= :NEW.fecha_inicio AND :NEW.fecha_fin <= fecha_fin) OR 
         (:NEW.fecha_inicio <= fecha_inicio AND fecha_fin <= :NEW.fecha_fin) OR
@@ -748,6 +765,7 @@ BEGIN
         (:NEW.fecha_inicio <= fecha_fin AND fecha_fin <= :NEW.fecha_fin)) AND
         cod_hotel=:NEW.cod_hotel AND habitacion='Sencilla';
         
+        -- Contamos el número de dobles en las fechas que coincidan con la reserva (se puede solapar)
         SELECT COUNT(*) INTO doblesReservadas FROM ReservaView
         WHERE ((fecha_inicio <= :NEW.fecha_inicio AND :NEW.fecha_fin <= fecha_fin) OR 
         (:NEW.fecha_inicio <= fecha_inicio AND fecha_fin <= :NEW.fecha_fin) OR
@@ -777,6 +795,8 @@ BEGIN
     
     -- 6. Un cliente nunca podrá tener más de una reserva en hoteles distintos para las mismas fechas
     IF (UPDATING('fecha_inicio') OR UPDATING('fecha_fin') OR INSERTING) THEN
+
+        -- Comprobamos el número de reservas de ese cliente en otros hoteles en fechas coincidentes (solapar también vale)
         SELECT COUNT(*) INTO reservasClienteOtroHotel FROM ReservaView 
         WHERE ((fecha_inicio <= :NEW.fecha_inicio AND :NEW.fecha_fin <= fecha_fin) OR 
         (:NEW.fecha_inicio <= fecha_inicio AND fecha_fin <= :NEW.fecha_fin) OR
@@ -788,6 +808,7 @@ BEGIN
             raise_application_error(-20038, 'ERROR: El Cliente ya tiene una reserva en otro Hotel para esas Fechas');
         END IF;
         
+        -- Comprobamos el número de reservas de ese cliente en ese hotel en fechas coincidentes (solapar también vale)
         SELECT COUNT(*) INTO reservasClienteMismoHotel FROM ReservaView 
         WHERE ((fecha_inicio <= :NEW.fecha_inicio AND :NEW.fecha_fin <= fecha_fin) OR 
         (:NEW.fecha_inicio <= fecha_inicio AND fecha_fin <= :NEW.fecha_fin) OR
@@ -850,10 +871,14 @@ BEGIN
     -- 12. La fecha de inicio de un empleado en un hotel será siempre igual o posterior a la fecha de fin en el hotel al que estaba asignado anteriormente. 
     IF (UPDATING('fecha_inicio') OR INSERTING OR UPDATING('fecha_contrato')) THEN
 
+
+        -- Comprobamos si el empleado trabaja actualmente o si ha trabajado en la multinacional
         SELECT COUNT(*) INTO empleadoTrabaja FROM EmpleadoView WHERE cod_empleado=:NEW.cod_empleado;
         
         SELECT COUNT(*) INTO existeAnteriorContrato FROM RegistroView WHERE cod_empleado=:NEW.cod_empleado;
         
+        -- Si trabaja actualmente, técnicamente estamos modificando, entonces tenemos que comparar la nueva fecha de 
+        -- inicio con la fecha de inicio de contrato con la empresa
         IF (empleadoTrabaja>0) THEN
             SELECT fecha_contrato INTO fechaContratoEmpleado FROM EmpleadoView WHERE cod_empleado=:NEW.cod_empleado;
 
@@ -862,6 +887,8 @@ BEGIN
             END IF;
         END IF;
         
+        -- Si ha trabajado anteriormente, tenemos que comprobar que la fecha de inicio del contrato actual sea mayor que la inicial en el registro 
+        -- También tenemos que comprobar que la fecha de inicio del contrato actual sea mayor que la fecha de fin en el hotel anterior
         IF (existeAnteriorContrato>0) THEN
             SELECT MIN(fecha_inicio) INTO minFechaInicioEmpleado FROM RegistroView WHERE cod_empleado=:NEW.cod_empleado;
             SELECT MAX(fecha_inicio) INTO maxFechaInicioEmpleado FROM RegistroView WHERE cod_empleado=:NEW.cod_empleado;
@@ -871,7 +898,6 @@ BEGIN
                 raise_application_error(-20044, 'ERROR: La fecha de inicio del contrato del empleado tiene que coincidir con el inicio en la multinacional');
             END IF;
 
-            -- Creo que esto no es necesario porque ya se comprueba en el if de arriba
             IF (:NEW.fecha_inicio < minFechaInicioEmpleado) THEN
                 raise_application_error(-20045, 'ERROR: La fecha de inicio de un empleado en el hotel no puede ser anterior a la fecha de inicio de su contrato con la multinacional');    
             END IF;
